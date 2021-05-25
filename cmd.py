@@ -2,7 +2,7 @@ compile = ['llc','--filetype=obj',None,'-o',None]
 link = ['clang++',None,'-o',None]
 clean = ['rm',None]
 time = ['/usr/bin/time','--format',
-        '"SYMVEC%D %F %I %K %M %O %R %W %X %Z %c %p %r %s %t %w %S %SYMVEC"',
+        '"SYMVEC%D %F %I %K %M %O %R %W %X %Z %c %p %r %s %t %w %S %USYMVEC"',
         None]
 format = 'utf-8'
 
