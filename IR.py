@@ -1,15 +1,19 @@
 import os
 import subprocess
 import cmd
+from RL import Action
+from math import log
+
+actor = Action()
 
 class IR:
     def __init__(self,src_path):
-        assert len(src_path)>3 and src_path[-3:]=='.ll', f'class IR initialized with non-IR: {src_path}'
+        assert len(src_path) > 3 and src_path[-3:] == '.ll', f'class IR initialized with non-IR: {src_path}'
         assert os.path.isfile(src_path), f'IR {src_path} does not exist'
 
         ########### naming convention ###########
-        # eg. IR_path = src.ll, after opt with -dce then
-        # IR_path = src_opt_{dce flag in hex}.ll
+        # eg. opt_IR_path = src.ll, after opt with -dce then
+        # opt_IR_path = src_opt_{dce flag in hex}.ll
 
         # public members
         self.IR_path = src_path
@@ -17,7 +21,8 @@ class IR:
         self.optimized = False
         self.exec_time = None
         self.state_vec = None
-        self.__prep_binary()
+        if not os.path.isfile(src_path[:-3]):
+            self.__prep_binary()
         self.__time_binary()
 
     def __prep_binary(self):
@@ -44,9 +49,27 @@ class IR:
         self.exec_time = float(vector[-2]) + float(vector[-1])
 
     # public methods
-    def opt(self, flag):    # returns reward
-        # TODO : check if file exist first
+    def opt(self, *flags_id):    # returns reward
+        new_path = self.opt_IR_path.join('{:02X}'.format(flag_id) for flag_id in flags_id)
+        # TODO : check if file exist first -- DONE
+        if not os.path.isfile(new_path):
+            # do opt
+            cmd.fill_opt(self.opt_IR_path, new_path, actor.get_action(flags_id))
+            p = subprocess.run(cmd.opt, stderr=subprocess.PIPE)
+            if not p.returncode:
+                # error occur
+                raise Exception(f'opt failed \n{p.stderr.decode(cmd.format)}')
+            self.__prep_binary()
+
+        self.opt_IR_path = new_path
         self.optimized = True
+
+        # calculate reward
+        val_before = self.exec_time
+        self.__time_binary()
+        val_after = self.exec_time
+
+        return log(val_before/val_after)
 
     def retarget(self,src_path):
         self.__init__(src_path)
