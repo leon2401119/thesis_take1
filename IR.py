@@ -18,28 +18,37 @@ class IR:
         self.opt_counter = 0
         self.exec_time = None
         self.state_vec = None
+        cmd.fill_cmds(self.opt_IR_path)
         if not os.path.isfile(src_path[:-3]):
-            self.__prep_binary()
+            r = self.__prep_binary()
+            if not r:
+                raise Exception(f'base file initialization for class IR failed\nfailed IR : {self.opt_IR_path}')
         self.__time_binary()
 
     def __prep_binary(self):
-        cmd.fill_cmds(self.opt_IR_path)
         p = subprocess.run(cmd.compile,stderr=subprocess.PIPE)
         if p.returncode:
             # error occur
-            raise Exception(f'compile failed \n{p.stderr.decode(cmd.format)}')
+            # raise Exception(f'compile failed \n{p.stderr.decode(cmd.format)}')
+            print(f'compile failed with IR {cmd.compile[2]}')
+            return False
         p = subprocess.run(cmd.link,stderr=subprocess.PIPE)
         if p.returncode:
             # error occur
-            raise Exception(f'link failed \n{p.stderr.decode(cmd.format)}')
+            # raise Exception(f'link failed \n{p.stderr.decode(cmd.format)}')
+            print(f'link failed with file {cmd.link[1]}')
+            return False
         subprocess.run(cmd.clean,check=True)
+        return True
 
     def __time_binary(self):
-        # TODO: adaptive time to counter noisy results
+        # TODO : adaptive time to counter noisy results
         p = subprocess.run(cmd.time, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if p.returncode:
             # error occur
+            # TODO : cope with 'cannot allocate memory' error from time cmd (free cache)
             raise Exception(f'time failed\n{p.stderr.decode(cmd.format)}')
+
         # process static information from time
         # results are enclosed between symbol 'SYMVEC' just in case the timed binary has output
         # weirdly, the results of time is stored in stderr instead of stdout
@@ -51,19 +60,25 @@ class IR:
     def opt(self, opt_hex_seq, *flags):    # returns reward
         # TODO : change hex representation of flags in naming convention to BASE-64
         new_path = self.opt_IR_path[:-3] + opt_hex_seq + '.ll'
+        cmd.fill_cmds(new_path)
 
         # TODO : check if file exist first -- DONE
-        if not os.path.isfile(new_path):
+        exist = os.path.isfile(new_path)
+        if not exist:
             # do opt
             cmd.fill_opt(self.opt_IR_path, new_path, *flags)
             p = subprocess.run(cmd.opt, stderr=subprocess.PIPE)
             if p.returncode:
                 # error occur
-                raise Exception(f'opt failed \n{p.stderr.decode(cmd.format)}\nopt command: {cmd.opt}')
-            self.__prep_binary()
+                # raise Exception(f'opt failed \n{p.stderr.decode(cmd.format)}\nopt command: {cmd.opt}')
+                print(f'opt failed with option {cmd.opt[2]}')
+                return None
 
-        self.opt_IR_path = new_path
+            if not self.__prep_binary():
+                return None
+
         self.opt_counter += 1
+        self.opt_IR_path = new_path
 
         # calculate reward
         val_before = self.exec_time

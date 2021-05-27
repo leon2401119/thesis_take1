@@ -23,7 +23,7 @@ class Action:
         p = subprocess.run(['opt','-h'], stdout=subprocess.PIPE)
         msg = p.stdout.decode('utf-8').split('Optimizations available:\n')[1]
         # exclude architecture specific optimizations for now
-        flags = re.findall(r'--(?!amd|aarch|arm|dot|falkor|function-import|gcn|help|hexagon|mips|objc|packets|ppc|print|r600|riscv|si|target|view|wasm|x86)[^ ]*', msg)
+        flags = re.findall(r'--(?!amd|aarch|arm|avr|dot|falkor|function-import|gcn|help|hexagon|internalize|instruction-select|nvptx|machine|metarenamer|mips|objc|packets|ppc|print|r600|regbank|riscv|si|slotindexes|target|view|wasm|x86|X86)[^ ]*', msg)
         cutoff_str = '--bounds-checking-single-trap'
         for id, flag in enumerate(flags):
             if flag == cutoff_str:
@@ -56,14 +56,14 @@ class ReplayMemory:
         for _ in range(len(self.mem) + pairs - self.memsize):
             self.mem.pop(random.randint(0,len(self.mem)-1))
         for i in range((len(ep)-1)//3):
-            self.mem.append(ep[i:i+4])
+            self.mem.append(ep[i*3:i*3+4])
 
     def get_batch(self,batchsize):      # returns batchsize*4 of list
         assert batchsize < self.memsize, 'batch size larger than total memory size'
         batchsize = len(self.mem) if batchsize > len(self.mem) else batchsize
 
         batch = []
-        for _ in batchsize:
+        for _ in range(batchsize):
             batch.append(self.mem.pop(random.randint(0,len(self.mem)-1)))
         return batch
 
@@ -74,8 +74,10 @@ class ReplayMemory:
 class RL:
     def __init__(self,src_folder,**kwargs):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.rpmem = ReplayMemory(100000)
+        self.rpmem = ReplayMemory(100)
         self.actor = Action()
+        # TODO 1 : split dataset into training & validation set
+        # TODO 2 : keep src_folder clean, separate folder for generated files for training
         assert len(os.listdir(src_folder)) >= 1, 'please initialize with at least one source file (.ll)'
         self.agent = [IR(os.path.join(src_folder,src)) for src in os.listdir(src_folder)]
         self.network = DQN(len(self.agent[0].state_vec),self.actor.num_flags).to(self.device)
@@ -121,21 +123,26 @@ class RL:
                     state = ir.state_vec
                     flags_id, flags, path_append = self.get_action(state)
                     reward = ir.opt(path_append, *flags)
+                    if not reward:
+                        break
                     ep.extend([state,flags_id[0],reward])
 
                 ep.append(ir.state_vec)     # push finishing state
                 ep_counter += 1
-                self.rpmem.push(ep)
+                if len(ep)>=4:
+                    # avoid the case where the first opt fail, resulting ep = [[base_state]]
+                    self.rpmem.push(ep)
                 ir.reset()
 
             while True:
                 batch = self.rpmem.get_batch(self.BATCH_SIZE)
                 if len(batch):
-                    groundtruth = [pair[2]+self.GAMMA*torch.max(self.network.forward(torch.tensor(pair[3]))) for pair in batch]
-                    y = [self.network.forward(torch.tensor(pair[0]))[pair[1]] for pair in batch]
-                    groundtruth = torch.tensor(groundtruth)
-                    y = torch.tensor(y)
+                    groundtruth = [pair[2]+self.GAMMA*torch.max(self.network.forward(torch.tensor(pair[3]).float())) for pair in batch]
+                    y = [self.network.forward(torch.tensor(pair[0]).float())[pair[1]] for pair in batch]
+                    groundtruth = torch.stack(groundtruth)
+                    y = torch.stack(y)
                     loss = self.loss_function(y,groundtruth)
+                    print(f'loss = {loss}')
                     loss.backward()
 
                     # optional : clip gradient
@@ -149,6 +156,7 @@ class RL:
         self.network.save_model()
 
     def eval(self):
+        # TODO : self-explanatory
         pass
 
 
