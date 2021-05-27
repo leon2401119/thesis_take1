@@ -1,10 +1,7 @@
 import os
 import subprocess
 import cmd
-from RL import Action
 from math import log
-
-actor = Action()
 
 class IR:
     def __init__(self,src_path):
@@ -18,7 +15,7 @@ class IR:
         # public members
         self.IR_path = src_path
         self.opt_IR_path = src_path
-        self.optimized = False
+        self.opt_counter = 0
         self.exec_time = None
         self.state_vec = None
         if not os.path.isfile(src_path[:-3]):
@@ -28,41 +25,45 @@ class IR:
     def __prep_binary(self):
         cmd.fill_cmds(self.opt_IR_path)
         p = subprocess.run(cmd.compile,stderr=subprocess.PIPE)
-        if not p.returncode:
+        if p.returncode:
             # error occur
             raise Exception(f'compile failed \n{p.stderr.decode(cmd.format)}')
         p = subprocess.run(cmd.link,stderr=subprocess.PIPE)
-        if not p.returncode:
+        if p.returncode:
             # error occur
             raise Exception(f'link failed \n{p.stderr.decode(cmd.format)}')
         subprocess.run(cmd.clean,check=True)
 
     def __time_binary(self):
+        # TODO: adaptive time to counter noisy results
         p = subprocess.run(cmd.time, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if not p.returncode:
+        if p.returncode:
             # error occur
             raise Exception(f'time failed\n{p.stderr.decode(cmd.format)}')
         # process static information from time
         # results are enclosed between symbol 'SYMVEC' just in case the timed binary has output
-        vector = p.stdout.decode(cmd.format).split('SYMVEC')[1].split(' ')
-        self.state_vec = vector[:-2]
+        # weirdly, the results of time is stored in stderr instead of stdout
+        vector = p.stderr.decode(cmd.format).split('SYMVEC')[1].split(' ')
+        self.state_vec = [int(v) for v in vector[:-2]]
         self.exec_time = float(vector[-2]) + float(vector[-1])
 
     # public methods
-    def opt(self, *flags_id):    # returns reward
-        new_path = self.opt_IR_path.join('{:02X}'.format(flag_id) for flag_id in flags_id)
+    def opt(self, opt_hex_seq, *flags):    # returns reward
+        # TODO : change hex representation of flags in naming convention to BASE-64
+        new_path = self.opt_IR_path[:-3] + opt_hex_seq + '.ll'
+
         # TODO : check if file exist first -- DONE
         if not os.path.isfile(new_path):
             # do opt
-            cmd.fill_opt(self.opt_IR_path, new_path, actor.get_action(flags_id))
+            cmd.fill_opt(self.opt_IR_path, new_path, *flags)
             p = subprocess.run(cmd.opt, stderr=subprocess.PIPE)
-            if not p.returncode:
+            if p.returncode:
                 # error occur
-                raise Exception(f'opt failed \n{p.stderr.decode(cmd.format)}')
+                raise Exception(f'opt failed \n{p.stderr.decode(cmd.format)}\nopt command: {cmd.opt}')
             self.__prep_binary()
 
         self.opt_IR_path = new_path
-        self.optimized = True
+        self.opt_counter += 1
 
         # calculate reward
         val_before = self.exec_time
@@ -76,5 +77,6 @@ class IR:
 
     def reset(self):
         self.__init__(self.IR_path)
+
 
 
