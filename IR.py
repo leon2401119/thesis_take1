@@ -50,7 +50,7 @@ class IR:
                 print('time : cannot allocate memory, retrying...')
             elif p.returncode:
                 # error occur
-                # TODO : cope with 'cannot allocate memory' error from time cmd (free cache) - DONE
+                # TODO : cope with 'cannot allocate memory' error from time cmd (free cache) - DONEN'T
                 raise Exception(f'time failed\n{p.stderr.decode(cmd.format)}')
             else:
                 break
