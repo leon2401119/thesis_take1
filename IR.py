@@ -5,6 +5,8 @@ from math import log
 
 class IR:
     def __init__(self,src_path):
+        print(f'initializing IR : {src_path}')
+
         assert len(src_path) > 3 and src_path[-3:] == '.ll', f'class IR initialized with non-IR: {src_path}'
         assert os.path.isfile(src_path), f'IR {src_path} does not exist'
 

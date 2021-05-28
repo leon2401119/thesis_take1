@@ -6,6 +6,7 @@ import pickle
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from math import floor
 from IR import IR
 from DQN import DQN
 
@@ -76,7 +77,7 @@ class RL:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.rpmem = ReplayMemory(100)
         self.actor = Action()
-        # TODO 1 : split dataset into training & validation set
+        # TODO 1 : split dataset into training & validation set - DONE
         # TODO 2 : keep src_folder clean, separate folder for generated files for training - DONE
         assert len(os.listdir(src_folder)) >= 1, 'please initialize with at least one source file (.ll)'
 
@@ -86,9 +87,16 @@ class RL:
         src_folder = 'llvm_gym'
         os.chdir(src_folder)
 
-        self.agent = [IR('./'+src) for src in os.listdir('.')]
+        dataset = ['./'+src for src in os.listdir('.')]
+        random.shuffle(dataset)
+        cutoff = floor(len(dataset)*(1-kwargs['eval_ratio']))
+        train_dataset = dataset[:cutoff]
+        eval_dataset = dataset[cutoff:]
+
+        self.train_agent = [IR(path) for path in train_dataset]
+        self.eval_agent = [IR(path) for path in eval_dataset]
         # TODO : policy & target net
-        self.network = DQN(len(self.agent[0].state_vec),self.actor.num_flags).to(self.device)
+        self.network = DQN(len(self.train_agent[0].state_vec),self.actor.num_flags).to(self.device)
         self.loss_function = nn.MSELoss()
 
         # tunables
@@ -137,7 +145,7 @@ class RL:
         while ep_counter < self.MAX_EPISODE:
             # fill replay memory
             while not self.rpmem.full():
-                ir = self.agent[random.randint(0,len(self.agent)-1)]
+                ir = self.train_agent[random.randint(0,len(self.train_agent)-1)]
                 ep = []
                 for _ in range(self.MAX_STEPS):
                     state = ir.state_vec
