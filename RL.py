@@ -80,6 +80,7 @@ class RL:
         # TODO 2 : keep src_folder clean, separate folder for generated files for training
         assert len(os.listdir(src_folder)) >= 1, 'please initialize with at least one source file (.ll)'
         self.agent = [IR(os.path.join(src_folder,src)) for src in os.listdir(src_folder)]
+        # TODO : policy & target net
         self.network = DQN(len(self.agent[0].state_vec),self.actor.num_flags).to(self.device)
         self.loss_function = nn.MSELoss()
 
