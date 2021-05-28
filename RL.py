@@ -95,6 +95,18 @@ class RL:
         self.BATCH_SIZE = kwargs['batch_size']
         self.optimizer = optim.Adam(self.network.parameters(), lr=self.LR)
 
+    def __myencoder(self,flag_id):
+        code = ''
+        for _ in range(2):
+            modulo = flag_id % 36
+            if modulo <= 9:
+                char = chr(ord('0') + modulo)
+            else:
+                char = chr(ord('a') + modulo - 10)
+            code = char + code
+            flag_id //= 36
+        return code
+
     def get_action(self,state_vec):
         # actions are all single-step right now
 
@@ -105,7 +117,7 @@ class RL:
             out = self.network.forward(torch.tensor(state_vec).float())
             flags_id.append(out.argmax().item())   # the optimization sequence in numbers (output from deep Q-network)
 
-        path_append = ''.join('{:03X}'.format(flag_id) for flag_id in flags_id)
+        path_append = ''.join(self.__myencoder(flag_id) for flag_id in flags_id)
         flags = self.actor.get_action(*flags_id)
 
         if self.EPSILON > self.EPSILON_MIN:

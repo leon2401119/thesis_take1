@@ -63,9 +63,9 @@ class IR:
         self.exec_time = float(vector[-2]) + float(vector[-1])
 
     # public methods
-    def opt(self, opt_hex_seq, *flags):    # returns reward
-        # TODO : change hex representation of flags in naming convention to BASE-64
-        new_path = self.opt_IR_path[:-3] + opt_hex_seq + '.ll'
+    def opt(self, opt_encoded_seq, *flags):    # returns reward
+        # TODO : change hex representation of flags in naming convention to BASE-64 - DONE (not b64 though)
+        new_path = self.opt_IR_path[:-3] + opt_encoded_seq + '.ll'
         cmd.fill_cmds(new_path)
 
         # TODO : check if file exist first -- DONE
