@@ -77,9 +77,16 @@ class RL:
         self.rpmem = ReplayMemory(100)
         self.actor = Action()
         # TODO 1 : split dataset into training & validation set
-        # TODO 2 : keep src_folder clean, separate folder for generated files for training
+        # TODO 2 : keep src_folder clean, separate folder for generated files for training - DONE
         assert len(os.listdir(src_folder)) >= 1, 'please initialize with at least one source file (.ll)'
-        self.agent = [IR(os.path.join(src_folder,src)) for src in os.listdir(src_folder)]
+
+        if os.path.isdir('llvm_gym'):
+            os.system('rm -rf llvm_gym')
+        os.system(f'cp -r {src_folder} llvm_gym')
+        src_folder = 'llvm_gym'
+        os.chdir(src_folder)
+
+        self.agent = [IR('./'+src) for src in os.listdir('.')]
         # TODO : policy & target net
         self.network = DQN(len(self.agent[0].state_vec),self.actor.num_flags).to(self.device)
         self.loss_function = nn.MSELoss()
