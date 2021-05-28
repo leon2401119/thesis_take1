@@ -43,11 +43,17 @@ class IR:
 
     def __time_binary(self):
         # TODO : adaptive time to counter noisy results
-        p = subprocess.run(cmd.time, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if p.returncode:
-            # error occur
-            # TODO : cope with 'cannot allocate memory' error from time cmd (free cache)
-            raise Exception(f'time failed\n{p.stderr.decode(cmd.format)}')
+        while True:
+            p = subprocess.run(cmd.time, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if p.returncode == 176:
+                # error recovery
+                print('time : cannot allocate memory, retrying...')
+            elif p.returncode:
+                # error occur
+                # TODO : cope with 'cannot allocate memory' error from time cmd (free cache) - DONE
+                raise Exception(f'time failed\n{p.stderr.decode(cmd.format)}')
+            else:
+                break
 
         # process static information from time
         # results are enclosed between symbol 'SYMVEC' just in case the timed binary has output
