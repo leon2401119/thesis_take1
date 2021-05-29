@@ -55,7 +55,7 @@ class ReplayMemory:
     def push(self,ep):    # ep = (state_1,action_1,reward_1,state_2,...)
         pairs = (len(ep)-1)//3
         for _ in range(len(self.mem) + pairs - self.memsize):
-            self.mem.pop(random.randint(0,len(self.mem)-1))
+            self.mem.pop(0)
         for i in range((len(ep)-1)//3):
             self.mem.append(ep[i*3:i*3+4])
 
@@ -63,10 +63,7 @@ class ReplayMemory:
         assert batchsize < self.memsize, 'batch size larger than total memory size'
         batchsize = len(self.mem) if batchsize > len(self.mem) else batchsize
 
-        batch = []
-        for _ in range(batchsize):
-            batch.append(self.mem.pop(random.randint(0,len(self.mem)-1)))
-        return batch
+        return random.sample(self.mem,batchsize)
 
     def full(self):
         return True if self.memsize == len(self.mem) else False
@@ -75,7 +72,7 @@ class ReplayMemory:
 class RL:
     def __init__(self,src_folder,**kwargs):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.rpmem = ReplayMemory(100)
+        self.rpmem = ReplayMemory(kwargs['memsize'])
         self.actor = Action()
         # TODO 1 : split dataset into training & validation set - DONE
         # TODO 2 : keep src_folder clean, separate folder for generated files for training - DONE
@@ -108,6 +105,8 @@ class RL:
         self.MAX_EPISODE = 100000
         self.MAX_STEPS = kwargs['max_steps']
         self.BATCH_SIZE = kwargs['batch_size']
+        self.UPDATE_INTERVAL = 10
+        self.EVAL_INTERVAL = 30
         self.optimizer = optim.Adam(self.network.parameters(), lr=self.LR)
 
     def __myencoder(self,flag_id):
@@ -144,25 +143,24 @@ class RL:
         ep_counter = 0
         while ep_counter < self.MAX_EPISODE:
             # fill replay memory
-            while not self.rpmem.full():
-                ir = self.train_agent[random.randint(0,len(self.train_agent)-1)]
-                ep = []
-                for _ in range(self.MAX_STEPS):
-                    state = ir.state_vec
-                    flags_id, flags, path_append = self.get_action(state)
-                    reward = ir.opt(path_append, *flags)
-                    if not reward:
-                        break
-                    ep.extend([state,flags_id[0],reward])
+            ir = self.train_agent[random.randint(0,len(self.train_agent)-1)]
+            ep = []
+            for _ in range(self.MAX_STEPS):
+                state = ir.state_vec
+                flags_id, flags, path_append = self.get_action(state)
+                reward = ir.opt(path_append, *flags)
+                if not reward:
+                    break
+                ep.extend([state,flags_id[0],reward])
 
-                ep.append(ir.state_vec)     # push finishing state
-                ep_counter += 1
-                if len(ep)>=4:
-                    # avoid the case where the first opt fail, resulting ep = [[base_state]]
-                    self.rpmem.push(ep)
-                ir.reset()
+            ep.append(ir.state_vec)     # push finishing state
+            ep_counter += 1
+            if len(ep)>=4:
+                # avoid the case where the first opt fail, resulting ep = [[base_state]]
+                self.rpmem.push(ep)
+            ir.reset()
 
-            while True:
+            if not ep_counter % self.UPDATE_INTERVAL:
                 batch = self.rpmem.get_batch(self.BATCH_SIZE)
                 if len(batch):
                     groundtruth = [pair[2]+self.GAMMA*torch.max(self.network.forward(torch.tensor(pair[3]).float())) for pair in batch]
@@ -179,14 +177,36 @@ class RL:
 
                     self.optimizer.step()
 
-                if len(batch)!=self.BATCH_SIZE:
-                    break
-        self.network.save_model()
+
+            if not ep_counter % self.EVAL_INTERVAL:
+                self.eval()
 
     def eval(self):
         # TODO : self-explanatory
-        pass
+        self.network.eval()
+        self.network.save_model()
+        saved_epsilon = self.EPSILON
+        speedup = []
+        self.EPSILON = 0
+        for ir in self.eval_agent:
+            base_exec_time = ir.exec_time
+            for _ in range(self.MAX_STEPS):
+                state = ir.state_vec
+                flags_id, flags, path_append = self.get_action(state)
+                if not ir.opt(path_append, *flags):
+                    print(f'best strategy is not a valid path')
+                    break
+            speedup_exec_time = ir.exec_time
 
+            speedup.append(base_exec_time/speedup_exec_time)
+
+        for ir in self.eval_agent:
+            ir.reset()
+
+        self.EPSILON = saved_epsilon
+        self.network.train()
+        print(f'[EVAL] avg.speedup = {sum(speedup)/len(speedup)}')
+        return sum(speedup)/len(speedup)    # return avg. speedup for validation
 
 # unit test
 if __name__ == '__main__':

@@ -5,7 +5,7 @@ from math import log
 
 class IR:
     def __init__(self,src_path):
-        print(f'initializing IR : {src_path}')
+        # print(f'initializing IR : {src_path}')
 
         assert len(src_path) > 3 and src_path[-3:] == '.ll', f'class IR initialized with non-IR: {src_path}'
         assert os.path.isfile(src_path), f'IR {src_path} does not exist'
@@ -49,11 +49,14 @@ class IR:
             p = subprocess.run(cmd.time, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if p.returncode == 176:
                 # error recovery
+                # TODO : cope with 'cannot allocate memory' error from time cmd (free cache) - DONEN'T
+                # UPDATE : "echo 1 > /proc/sys/vm/overcommit_memory" seeems to solve the problem
                 print('time : cannot allocate memory, retrying...')
             elif p.returncode:
                 # error occur
-                # TODO : cope with 'cannot allocate memory' error from time cmd (free cache) - DONEN'T
-                raise Exception(f'time failed\n{p.stderr.decode(cmd.format)}')
+                # raise Exception(f'time failed\n{p.stderr.decode(cmd.format)}')
+                print(f'time failed\n{p.stderr.decode(cmd.format)}')
+                return False
             else:
                 break
 
@@ -63,6 +66,7 @@ class IR:
         vector = p.stderr.decode(cmd.format).split('SYMVEC')[1].split(' ')
         self.state_vec = [int(v) for v in vector[:-2]]
         self.exec_time = float(vector[-2]) + float(vector[-1])
+        return True
 
     # public methods
     def opt(self, opt_encoded_seq, *flags):    # returns reward
@@ -85,13 +89,14 @@ class IR:
             if not self.__prep_binary():
                 return None
 
-        self.opt_counter += 1
-        self.opt_IR_path = new_path
-
         # calculate reward
         val_before = self.exec_time
-        self.__time_binary()
+        if not self.__time_binary():
+            return None
         val_after = self.exec_time
+
+        self.opt_counter += 1
+        self.opt_IR_path = new_path
 
         return log(val_before/val_after)
 
