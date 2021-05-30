@@ -45,6 +45,7 @@ class IR:
 
     def __time_binary(self):
         # TODO : adaptive time to counter noisy results
+        # UPDATE : postponed bcuz timing is already slow
         while True:
             p = subprocess.run(cmd.time, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if p.returncode == 176:

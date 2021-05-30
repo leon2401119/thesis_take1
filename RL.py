@@ -94,7 +94,8 @@ class RL:
         self.eval_agent = [IR(path) for path in eval_dataset]
         # TODO : policy & target net
         self.network = DQN(len(self.train_agent[0].state_vec),self.actor.num_flags).to(self.device)
-        self.loss_function = nn.MSELoss()
+        self.target_network = DQN(len(self.train_agent[0].state_vec),self.actor.num_flags).to(self.device)
+        self.target_network.load_state_dict(self.network.state_dict())
 
         # tunables
         self.LR = kwargs['lr']
@@ -107,6 +108,8 @@ class RL:
         self.BATCH_SIZE = kwargs['batch_size']
         self.UPDATE_INTERVAL = 10
         self.EVAL_INTERVAL = 30
+        self.TARGET_UPDATE_INTERVAL = 100
+        self.loss_function = nn.MSELoss()
         self.optimizer = optim.Adam(self.network.parameters(), lr=self.LR)
 
     def __myencoder(self,flag_id):
@@ -140,7 +143,7 @@ class RL:
         return flags_id, flags, path_append
 
     def train(self):
-        ep_counter = 0
+        ep_counter, step_counter = 0, 0
         while ep_counter < self.MAX_EPISODE:
             # fill replay memory
             ir = self.train_agent[random.randint(0,len(self.train_agent)-1)]
@@ -163,7 +166,7 @@ class RL:
             if not ep_counter % self.UPDATE_INTERVAL:
                 batch = self.rpmem.get_batch(self.BATCH_SIZE)
                 if len(batch):
-                    groundtruth = [pair[2]+self.GAMMA*torch.max(self.network.forward(torch.tensor(pair[3]).float())) for pair in batch]
+                    groundtruth = [pair[2]+self.GAMMA*torch.max(self.target_network.forward(torch.tensor(pair[3]).float())) for pair in batch]
                     y = [self.network.forward(torch.tensor(pair[0]).float())[pair[1]] for pair in batch]
                     groundtruth = torch.stack(groundtruth)
                     y = torch.stack(y)
@@ -176,13 +179,17 @@ class RL:
                         param.grad.data.clamp_(-1, 1)
 
                     self.optimizer.step()
+                    step_counter += 1
 
+                if not step_counter % self.TARGET_UPDATE_INTERVAL:
+                    with torch.no_grad():
+                        self.target_network.load_state_dict(self.network.state_dict())
 
             if not ep_counter % self.EVAL_INTERVAL:
                 self.eval()
 
     def eval(self):
-        # TODO : self-explanatory
+        # TODO : self-explanatory - DONE
         self.network.eval()
         self.network.save_model()
         saved_epsilon = self.EPSILON
